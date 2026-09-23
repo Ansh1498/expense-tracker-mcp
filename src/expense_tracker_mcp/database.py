@@ -391,6 +391,50 @@ async def get_monthly_expense_report(
         }
 
 
+# Category Expense Report
+async def get_category_expense_report(category: str):
+    """Get expense report for a specific category."""
+
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        db.row_factory = aiosqlite.Row
+
+        cursor = await db.execute(
+            """
+            SELECT
+                COUNT(*) AS expense_count,
+                COALESCE(SUM(amount), 0) AS total_amount
+            FROM expenses
+            WHERE category = ?
+            """,
+            (category,)
+        )
+
+        summary = await cursor.fetchone()
+
+        cursor = await db.execute(
+            """
+            SELECT *
+            FROM expenses
+            WHERE category = ?
+            ORDER BY date DESC, id DESC
+            """,
+            (category,)
+        )
+
+        rows = await cursor.fetchall()
+
+        return {
+            "category": category,
+            "expense_count": summary["expense_count"],
+            "total_amount": summary["total_amount"],
+            "expenses": [dict(row) for row in rows]
+        }
+
+
+
+
+
 if __name__ == "__main__":
     import asyncio
 

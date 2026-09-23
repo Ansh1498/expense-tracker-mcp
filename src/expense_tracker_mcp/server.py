@@ -11,6 +11,7 @@ from expense_tracker_mcp.database import (
     get_expense_summary as db_get_expense_summary,
     get_expense_summary_by_date as db_get_expense_summary_by_date,
     get_monthly_expense_report as db_get_monthly_expense_report,
+    get_category_expense_report as db_get_category_expense_report,
 )
 
 
@@ -157,6 +158,12 @@ async def get_monthly_expense_report(
         year,
         month
     )
+
+@mcp.tool
+async def get_category_expense_report(category: str):
+    """Get expense report for a specific category."""
+
+    return await db_get_category_expense_report(category)
 
 
 
