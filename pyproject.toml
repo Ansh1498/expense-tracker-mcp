@@ -1,0 +1,20 @@
+[project]
+name = "expense-tracker-mcp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Ratura Practice", email = "ratura@example.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "fastmcp>=4.0.7",
+]
+
+[project.scripts]
+expense-tracker-mcp = "expense_tracker_mcp:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"

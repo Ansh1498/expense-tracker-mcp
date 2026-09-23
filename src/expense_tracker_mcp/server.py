@@ -1,0 +1,135 @@
+from fastmcp import FastMCP
+
+from expense_tracker_mcp.database import (
+    init_db,
+    add_expense as db_add_expense,
+    get_expense as db_get_expense,
+    list_expenses as db_list_expenses,
+    update_expense as db_update_expense,
+    delete_expense as db_delete_expense,
+    search_expenses as db_search_expenses,
+)
+
+
+mcp = FastMCP("ExpenseTracker")
+
+
+@mcp.tool
+async def add_expense(
+    date: str,
+    amount: float,
+    category: str,
+    subcategory: str = "",
+    description: str = "",
+    payment_method: str = ""
+):
+    """Add a new expense."""
+
+    expense_id = await db_add_expense(
+        date,
+        amount,
+        category,
+        subcategory,
+        description,
+        payment_method
+    )
+
+    return {
+        "success": True,
+        "expense_id": expense_id,
+        "message": "Expense added successfully"
+    }
+
+@mcp.tool
+async def get_expense(expense_id: int):
+    """Get a single expense by ID."""
+
+    expense = await db_get_expense(expense_id)
+
+    if expense is None:
+        return {
+            "success": False,
+            "message": f"Expense with ID {expense_id} not found"
+        }
+
+    return expense
+
+
+@mcp.tool
+async def list_expenses():
+    """Get all expenses."""
+
+    return await db_list_expenses()
+
+
+@mcp.tool
+async def update_expense(
+    expense_id: int,
+    date: str,
+    amount: float,
+    category: str,
+    subcategory: str = "",
+    description: str = "",
+    payment_method: str = ""
+):
+    """Update an existing expense."""
+
+    rows_updated = await db_update_expense(
+        expense_id,
+        date,
+        amount,
+        category,
+        subcategory,
+        description,
+        payment_method
+    )
+
+    if rows_updated == 0:
+        return {
+            "success": False,
+            "message": f"Expense with ID {expense_id} not found"
+        }
+
+    return {
+        "success": True,
+        "message": "Expense updated successfully",
+        "expense_id": expense_id
+    }
+
+
+@mcp.tool
+async def delete_expense(expense_id: int):
+    """Delete an expense by ID."""
+
+    rows_deleted = await db_delete_expense(expense_id)
+
+    if rows_deleted == 0:
+        return {
+            "success": False,
+            "message": f"Expense with ID {expense_id} not found"
+        }
+
+    return {
+        "success": True,
+        "message": "Expense deleted successfully",
+        "expense_id": expense_id
+    }
+
+
+@mcp.tool
+async def search_expenses(keyword: str):
+    """Search expenses by keyword."""
+
+    return await db_search_expenses(keyword)
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(init_db())
+
+    mcp.run(
+        transport="streamable-http",
+        host="0.0.0.0",
+        port=8000
+    )
