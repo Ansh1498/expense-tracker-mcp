@@ -8,6 +8,7 @@ from expense_tracker_mcp.database import (
     update_expense as db_update_expense,
     delete_expense as db_delete_expense,
     search_expenses as db_search_expenses,
+    get_expense_summary as db_get_expense_summary,
 )
 
 
@@ -121,6 +122,13 @@ async def search_expenses(keyword: str):
     """Search expenses by keyword."""
 
     return await db_search_expenses(keyword)
+
+
+@mcp.tool
+async def get_expense_summary():
+    """Get overall expense summary and category-wise spending."""
+
+    return await db_get_expense_summary()
 
 
 if __name__ == "__main__":

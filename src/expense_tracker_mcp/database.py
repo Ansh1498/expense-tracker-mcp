@@ -221,6 +221,54 @@ async def get_expense(expense_id: int):
 
 
 
+# Expense Summary function
+async def get_expense_summary():
+    """Get expense summary and category-wise totals."""
+
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        # Total expenses and total amount
+        cursor = await db.execute(
+            """
+            SELECT
+                COUNT(*) AS total_expenses,
+                COALESCE(SUM(amount), 0) AS total_amount
+            FROM expenses
+            """
+        )
+
+        summary = await cursor.fetchone()
+
+        # Category-wise total
+        cursor = await db.execute(
+            """
+            SELECT
+                category,
+                COUNT(*) AS expense_count,
+                SUM(amount) AS total_amount
+            FROM expenses
+            GROUP BY category
+            ORDER BY total_amount DESC
+            """
+        )
+
+        rows = await cursor.fetchall()
+
+        category_summary = [
+            {
+                "category": row[0],
+                "expense_count": row[1],
+                "total_amount": row[2]
+            }
+            for row in rows
+        ]
+
+        return {
+            "total_expenses": summary[0],
+            "total_amount": summary[1],
+            "category_summary": category_summary
+        }
+
 
 if __name__ == "__main__":
     import asyncio
