@@ -9,6 +9,7 @@ from expense_tracker_mcp.database import (
     delete_expense as db_delete_expense,
     search_expenses as db_search_expenses,
     get_expense_summary as db_get_expense_summary,
+    get_expense_summary_by_date as db_get_expense_summary_by_date,
 )
 
 
@@ -129,6 +130,18 @@ async def get_expense_summary():
     """Get overall expense summary and category-wise spending."""
 
     return await db_get_expense_summary()
+
+@mcp.tool
+async def get_expense_summary_by_date(
+    start_date: str,
+    end_date: str
+):
+    """Get expense summary for a specific date range."""
+
+    return await db_get_expense_summary_by_date(
+        start_date,
+        end_date
+    )
 
 
 if __name__ == "__main__":

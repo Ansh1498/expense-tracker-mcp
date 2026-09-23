@@ -270,6 +270,64 @@ async def get_expense_summary():
         }
 
 
+# Date Range Expense Summary
+async def get_expense_summary_by_date(
+    start_date: str,
+    end_date: str
+):
+    """Get expense summary for a specific date range."""
+
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        # Total expenses and total amount
+        cursor = await db.execute(
+            """
+            SELECT
+                COUNT(*) AS total_expenses,
+                COALESCE(SUM(amount), 0) AS total_amount
+            FROM expenses
+            WHERE date BETWEEN ? AND ?
+            """,
+            (start_date, end_date)
+        )
+
+        summary = await cursor.fetchone()
+
+        # Category-wise summary
+        cursor = await db.execute(
+            """
+            SELECT
+                category,
+                COUNT(*) AS expense_count,
+                SUM(amount) AS total_amount
+            FROM expenses
+            WHERE date BETWEEN ? AND ?
+            GROUP BY category
+            ORDER BY total_amount DESC
+            """,
+            (start_date, end_date)
+        )
+
+        rows = await cursor.fetchall()
+
+        category_summary = [
+            {
+                "category": row[0],
+                "expense_count": row[1],
+                "total_amount": row[2]
+            }
+            for row in rows
+        ]
+
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "total_expenses": summary[0],
+            "total_amount": summary[1],
+            "category_summary": category_summary
+        }
+
+
 if __name__ == "__main__":
     import asyncio
 
