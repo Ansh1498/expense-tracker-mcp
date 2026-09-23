@@ -10,6 +10,7 @@ from expense_tracker_mcp.database import (
     search_expenses as db_search_expenses,
     get_expense_summary as db_get_expense_summary,
     get_expense_summary_by_date as db_get_expense_summary_by_date,
+    get_monthly_expense_report as db_get_monthly_expense_report,
 )
 
 
@@ -131,6 +132,7 @@ async def get_expense_summary():
 
     return await db_get_expense_summary()
 
+
 @mcp.tool
 async def get_expense_summary_by_date(
     start_date: str,
@@ -142,6 +144,20 @@ async def get_expense_summary_by_date(
         start_date,
         end_date
     )
+
+
+@mcp.tool
+async def get_monthly_expense_report(
+    year: int,
+    month: int
+):
+    """Get expense report for a specific month."""
+
+    return await db_get_monthly_expense_report(
+        year,
+        month
+    )
+
 
 
 if __name__ == "__main__":

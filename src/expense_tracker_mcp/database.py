@@ -327,6 +327,69 @@ async def get_expense_summary_by_date(
             "category_summary": category_summary
         }
 
+# Monthly Expense Report
+async def get_monthly_expense_report(
+    year: int,
+    month: int
+):
+    """Get expense report for a specific month."""
+
+    month_str = f"{month:02d}"
+    start_date = f"{year}-{month_str}-01"
+
+    if month == 12:
+        end_date = f"{year + 1}-01-01"
+    else:
+        end_date = f"{year}-{month + 1:02d}-01"
+
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        cursor = await db.execute(
+            """
+            SELECT
+                COUNT(*) AS total_expenses,
+                COALESCE(SUM(amount), 0) AS total_amount
+            FROM expenses
+            WHERE date >= ? AND date < ?
+            """,
+            (start_date, end_date)
+        )
+
+        summary = await cursor.fetchone()
+
+        cursor = await db.execute(
+            """
+            SELECT
+                category,
+                COUNT(*) AS expense_count,
+                SUM(amount) AS total_amount
+            FROM expenses
+            WHERE date >= ? AND date < ?
+            GROUP BY category
+            ORDER BY total_amount DESC
+            """,
+            (start_date, end_date)
+        )
+
+        rows = await cursor.fetchall()
+
+        category_summary = [
+            {
+                "category": row[0],
+                "expense_count": row[1],
+                "total_amount": row[2]
+            }
+            for row in rows
+        ]
+
+        return {
+            "year": year,
+            "month": month,
+            "total_expenses": summary[0],
+            "total_amount": summary[1],
+            "category_summary": category_summary
+        }
+
 
 if __name__ == "__main__":
     import asyncio
