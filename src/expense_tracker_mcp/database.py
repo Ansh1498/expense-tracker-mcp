@@ -1,6 +1,39 @@
 import aiosqlite
 import os
+import logging
 from datetime import datetime
+
+
+def validate_expense(
+    date: str,
+    amount: float,
+    category: str
+):
+    """Validate expense input."""
+
+    if not date:
+        raise ValueError("Date is required.")
+
+    if amount <= 0:
+        raise ValueError("Amount must be greater than 0.")
+
+    if not category.strip():
+        raise ValueError("Category is required.")
+
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError("Date must be in YYYY-MM-DD format.")
+
+    return True
+
+
+
+logging.basicConfig(
+    level=logging.ERROR,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 
 
 # SQLite database file
@@ -44,39 +77,47 @@ async def add_expense(
 ):
     """Add a new expense to the database."""
 
-    now = datetime.now().isoformat()
+    validate_expense(date, amount, category)
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    try:
+        now = datetime.now().isoformat()
 
-        cursor = await db.execute(
-            """
-            INSERT INTO expenses (
-                date,
-                amount,
-                category,
-                subcategory,
-                description,
-                payment_method,
-                created_at,
-                updated_at
+        async with aiosqlite.connect(DB_PATH) as db:
+
+            cursor = await db.execute(
+                """
+                INSERT INTO expenses (
+                    date,
+                    amount,
+                    category,
+                    subcategory,
+                    description,
+                    payment_method,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    date,
+                    amount,
+                    category,
+                    subcategory,
+                    description,
+                    payment_method,
+                    now,
+                    now
+                )
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                date,
-                amount,
-                category,
-                subcategory,
-                description,
-                payment_method,
-                now,
-                now
-            )
-        )
 
-        await db.commit()
+            await db.commit()
 
-        return cursor.lastrowid
+            return cursor.lastrowid
+
+    except aiosqlite.Error as e:
+        logging.error(f"Database error while adding expense: {e}")
+        raise RuntimeError(f"Database error while adding expense: {e}")
+
 
 # List Expenses function
 async def list_expenses():
@@ -98,6 +139,8 @@ async def list_expenses():
 
         return [dict(row) for row in rows]
 
+
+
 # Update Expense function
 async def update_expense(
     expense_id: int,
@@ -110,38 +153,47 @@ async def update_expense(
 ):
     """Update an existing expense."""
 
-    now = datetime.now().isoformat()
+    validate_expense(date, amount, category)
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    try:
+        now = datetime.now().isoformat()
 
-        cursor = await db.execute(
-            """
-            UPDATE expenses
-            SET
-                date = ?,
-                amount = ?,
-                category = ?,
-                subcategory = ?,
-                description = ?,
-                payment_method = ?,
-                updated_at = ?
-            WHERE id = ?
-            """,
-            (
-                date,
-                amount,
-                category,
-                subcategory,
-                description,
-                payment_method,
-                now,
-                expense_id
+        async with aiosqlite.connect(DB_PATH) as db:
+
+            cursor = await db.execute(
+                """
+                UPDATE expenses
+                SET
+                    date = ?,
+                    amount = ?,
+                    category = ?,
+                    subcategory = ?,
+                    description = ?,
+                    payment_method = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    date,
+                    amount,
+                    category,
+                    subcategory,
+                    description,
+                    payment_method,
+                    now,
+                    expense_id
+                )
             )
-        )
 
-        await db.commit()
+            await db.commit()
 
-        return cursor.rowcount
+            return cursor.rowcount
+
+    except aiosqlite.Error as e:
+        logging.error(f"Database error while updating expense: {e}")
+        raise RuntimeError(f"Database error while updating expense: {e}")
+
+
 
 # Delete Expense function
 async def delete_expense(expense_id: int):
