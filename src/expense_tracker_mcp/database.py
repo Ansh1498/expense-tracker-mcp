@@ -668,6 +668,25 @@ async def get_top_spending_categories(limit: int = 5):
         ]
 
 
+# Expense Insights function
+async def get_expense_insights():
+    """Get overall spending insights."""
+
+    statistics = await get_expense_statistics()
+    categories = await get_top_spending_categories(limit=1)
+
+    top_category = categories[0] if categories else None
+
+    return {
+        "total_expenses": statistics["total_expenses"],
+        "total_amount": statistics["total_amount"],
+        "average_expense": statistics["average_expense"],
+        "highest_expense": statistics["highest_expense"],
+        "lowest_expense": statistics["lowest_expense"],
+        "top_category": top_category
+    }
+
+
 if __name__ == "__main__":
     import asyncio
 

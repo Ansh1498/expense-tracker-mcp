@@ -18,6 +18,7 @@ from expense_tracker_mcp.database import (
     get_budget_status as db_get_budget_status,
     get_spending_alert as db_get_spending_alert,
     get_top_spending_categories as db_get_top_spending_categories,
+    get_expense_insights as db_get_expense_insights,
 )
 
 
@@ -218,6 +219,13 @@ async def get_top_spending_categories(limit: int = 5):
     """Get top spending categories by total amount."""
 
     return await db_get_top_spending_categories(limit)
+
+
+@mcp.tool
+async def get_expense_insights():
+    """Get overall spending insights."""
+
+    return await db_get_expense_insights()
 
 
 
