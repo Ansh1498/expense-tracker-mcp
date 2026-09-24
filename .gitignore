@@ -16,3 +16,6 @@ __pycache__/
 
 # Pytest cache
 .pytest_cache/
+
+# Local testing script
+test_monthly.py

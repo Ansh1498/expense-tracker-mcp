@@ -157,20 +157,23 @@ async def search_expenses(
 
 
 @mcp.tool
-async def get_expense_summary():
-    """Get overall expense summary and category-wise spending."""
+async def get_expense_summary(user_id: str):
+    """Get expense summary and category-wise spending for a specific user."""
 
-    return await db_get_expense_summary()
+    return await db_get_expense_summary(user_id)
+
 
 
 @mcp.tool
 async def get_expense_summary_by_date(
+    user_id: str,
     start_date: str,
     end_date: str
 ):
     """Get expense summary for a specific date range."""
 
     return await db_get_expense_summary_by_date(
+        user_id,
         start_date,
         end_date
     )
@@ -178,112 +181,259 @@ async def get_expense_summary_by_date(
 
 @mcp.tool
 async def get_monthly_expense_report(
+    user_id: str,
     year: int,
     month: int
 ):
-    """Get expense report for a specific month."""
+    """Get expense report for a specific month and user."""
 
     return await db_get_monthly_expense_report(
+        user_id,
         year,
         month
     )
 
-@mcp.tool
-async def get_category_expense_report(category: str):
-    """Get expense report for a specific category."""
-
-    return await db_get_category_expense_report(category)
-
 
 @mcp.tool
-async def get_expense_statistics():
-    """Get overall expense statistics."""
+async def get_category_expense_report(
+    user_id: str,
+    category: str
+):
+    """Get expense report for a specific category and user."""
 
-    return await db_get_expense_statistics()
+    return await db_get_category_expense_report(
+        user_id,
+        category
+    )
+
+
+
+@mcp.tool
+async def get_expense_statistics(user_id: str):
+    """Get expense statistics for a specific user."""
+
+    return await db_get_expense_statistics(user_id)
 
 
 @mcp.tool
 async def set_budget(
+    user_id: str,
     category: str,
     monthly_limit: float
 ):
-    """Set or update a monthly budget for a category."""
+    """
+    Create or update a monthly budget for a specific user.
+
+    Use this tool when the user wants to set or change the
+    monthly spending limit for an expense category.
+
+    Args:
+        user_id: Unique identifier of the user.
+        category: Expense category for the budget.
+        monthly_limit: Maximum monthly spending limit.
+
+    Returns:
+        A dictionary containing the user ID, category, and
+        configured monthly budget.
+    """
 
     return await db_set_budget(
+        user_id,
         category,
         monthly_limit
     )
 
 
 @mcp.tool
-async def get_budgets():
-    """Get all category budgets."""
+async def get_budgets(user_id: str):
+    """
+    Get all monthly budgets for a specific user.
 
-    return await db_get_budgets()
+    Use this tool when the user wants to view their configured
+    category budgets and monthly spending limits.
 
+    Args:
+        user_id: Unique identifier of the user.
 
-@mcp.tool
-async def get_budget_status(category: str):
-    """Compare monthly budget with actual spending."""
+    Returns:
+        A list of the user's category budgets, including
+        category names and monthly spending limits.
+    """
 
-    return await db_get_budget_status(category)
-
-
-@mcp.tool
-async def get_spending_alert(category: str):
-    """Check whether spending is approaching or exceeding the budget."""
-
-    return await db_get_spending_alert(category)
+    return await db_get_budgets(user_id)
 
 
 @mcp.tool
-async def get_top_spending_categories(limit: int = 5):
-    """Get top spending categories by total amount."""
+async def get_budget_status(
+    user_id: str,
+    category: str
+):
+    """
+    Check the current monthly budget status for a specific user
+    and expense category.
 
-    return await db_get_top_spending_categories(limit)
+    Use this tool when the user wants to know how much they have
+    spent from a category budget and how much budget remains.
 
+    Args:
+        user_id: Unique identifier of the user.
+        category: Expense category whose budget status should
+                  be checked.
 
-@mcp.tool
-async def get_expense_insights():
-    """Get overall spending insights."""
+    Returns:
+        A dictionary containing the category budget, amount spent
+        during the current month, remaining budget, and a message
+        if no budget is configured.
+    """
 
-    return await db_get_expense_insights()
-
-
-@mcp.tool
-async def get_expense_trends():
-    """Get month-wise expense trends."""
-
-    return await db_get_expense_trends()
-
-
-
-@mcp.tool
-async def get_daily_spending_summary():
-    """Get date-wise expense summary."""
-
-    return await db_get_daily_spending_summary()
-
-
-@mcp.tool
-async def get_payment_method_analysis():
-    """Get expense analysis by payment method."""
-
-    return await db_get_payment_method_analysis()
+    return await db_get_budget_status(
+        user_id,
+        category
+    )
 
 
 @mcp.tool
-async def get_recurring_expenses():
-    """Detect recurring expenses based on same category and amount."""
+async def get_spending_alert(
+    user_id: str,
+    category: str
+):
+    """
+    Check whether a user's spending is approaching or exceeding
+    the monthly budget for a specific category.
 
-    return await db_get_recurring_expenses()
+    Use this tool when the user wants to know whether they are
+    close to or over their budget limit.
+
+    An alert is triggered when spending reaches 80% or more of
+    the configured monthly budget.
+
+    Args:
+        user_id: Unique identifier of the user.
+        category: Expense category whose budget usage should
+                  be checked.
+
+    Returns:
+        A dictionary containing the budget, amount spent,
+        percentage of budget used, alert status, and a
+        descriptive spending message.
+    """
+
+    return await db_get_spending_alert(
+        user_id,
+        category
+    )
 
 
 @mcp.tool
-async def get_financial_dashboard_summary():
-    """Get a complete financial dashboard summary."""
+async def get_top_spending_categories(
+    user_id: str,
+    limit: int = 5
+):
+    """
+    Identify the top spending categories for a specific user.
 
-    return await db_get_financial_dashboard_summary()
+    Use this tool when the user wants to know which expense
+    categories account for the most spending.
+
+    Args:
+        user_id: Unique identifier of the user.
+        limit: Maximum number of top categories to return.
+
+    Returns:
+        A list of categories ranked by total spending,
+        including expense count and total amount.
+    """
+
+    return await db_get_top_spending_categories(
+        user_id,
+        limit
+    )
+
+
+@mcp.tool
+async def get_expense_insights(user_id: str):
+    """
+    Get overall spending insights for a specific user.
+
+    Use this tool when the user wants a summary of their
+    spending patterns, including total expenses, average
+    spending, highest and lowest expenses, and top category.
+
+    Args:
+        user_id: Unique identifier of the user.
+
+    Returns:
+        A dictionary containing the user's expense statistics
+        and top spending category.
+    """
+
+    return await db_get_expense_insights(user_id)
+
+
+
+@mcp.tool
+async def get_expense_trends(user_id: str):
+    """Get month-wise expense trends for a specific user."""
+
+    return await db_get_expense_trends(user_id)
+
+
+
+@mcp.tool
+async def get_daily_spending_summary(user_id: str):
+    """Get date-wise expense summary for a specific user."""
+
+    return await db_get_daily_spending_summary(user_id)
+
+
+@mcp.tool
+async def get_payment_method_analysis(user_id: str):
+    """Get expense analysis by payment method for a specific user."""
+
+    return await db_get_payment_method_analysis(user_id)
+
+
+@mcp.tool
+async def get_recurring_expenses(user_id: str):
+    """
+    Identify recurring expense patterns for a specific user.
+
+    Use this tool when the user wants to find repeated expenses
+    based on the same category and amount.
+
+    Args:
+        user_id: Unique identifier of the user.
+
+    Returns:
+        A list of recurring expense patterns with category,
+        amount, and occurrence count.
+    """
+
+    return await db_get_recurring_expenses(user_id)
+
+
+@mcp.tool
+async def get_financial_dashboard_summary(user_id: str):
+    """
+    Get a complete financial dashboard summary for a specific user.
+
+    Use this tool when the user wants an overall view of their
+    financial activity, including expense statistics, top spending
+    categories, monthly spending trends, and budgets.
+
+    Args:
+        user_id: Unique identifier of the user whose financial
+                 dashboard should be retrieved.
+
+    Returns:
+        A dictionary containing:
+        - Overall expense statistics
+        - Top spending categories
+        - Monthly spending trends
+        - User-specific budgets
+    """
+
+    return await db_get_financial_dashboard_summary(user_id)
 
 
 
