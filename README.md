@@ -14,6 +14,37 @@ This project exposes expense-management functionality as **Model Context Protoco
 - ✏️ Update existing expenses
 - 🗑️ Delete expenses
 - 🔎 Search expenses by keyword
+
+### 📊 Analytics & Reports
+
+- 📈 Expense summary
+- 📅 Date-range expense summary
+- 🗓️ Monthly expense reports
+- 🏷️ Category-wise expense reports
+- 💰 Expense statistics
+- 📉 Expense spending trends
+- 📆 Daily spending summary
+- 💳 Payment method analysis
+- 🔁 Recurring expense detection
+- 📊 Financial dashboard summary
+
+### 💵 Budget Management
+
+- 🎯 Set expense budgets
+- 📋 View budgets
+- 📊 Budget vs actual spending
+- 🚨 Spending alerts
+- 🔝 Top spending categories
+- 💡 Expense insights
+
+### 🛡️ Reliability
+
+- ✅ Expense input validation
+- ⚠️ Database error handling
+- 📝 Error logging
+
+### ⚙️ Infrastructure
+
 - 💾 SQLite database for persistent storage
 - ⚡ Asynchronous database operations using `aiosqlite`
 - 🔌 MCP interface using `FastMCP`
