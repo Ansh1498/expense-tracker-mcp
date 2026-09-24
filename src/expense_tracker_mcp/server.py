@@ -22,6 +22,7 @@ from expense_tracker_mcp.database import (
     get_expense_trends as db_get_expense_trends,
     get_daily_spending_summary as db_get_daily_spending_summary,
     get_payment_method_analysis as db_get_payment_method_analysis,
+    get_recurring_expenses as db_get_recurring_expenses,
 )
 
 
@@ -251,6 +252,13 @@ async def get_payment_method_analysis():
     """Get expense analysis by payment method."""
 
     return await db_get_payment_method_analysis()
+
+
+@mcp.tool
+async def get_recurring_expenses():
+    """Detect recurring expenses based on same category and amount."""
+
+    return await db_get_recurring_expenses()
 
 
 

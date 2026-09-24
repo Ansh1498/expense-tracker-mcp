@@ -777,6 +777,37 @@ async def get_payment_method_analysis():
         ]
 
 
+# Recurring Expenses function
+async def get_recurring_expenses():
+    """Detect recurring expenses based on same category and amount."""
+
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        cursor = await db.execute(
+            """
+            SELECT
+                category,
+                amount,
+                COUNT(*) AS occurrence_count
+            FROM expenses
+            GROUP BY category, amount
+            HAVING COUNT(*) >= 2
+            ORDER BY occurrence_count DESC
+            """
+        )
+
+        rows = await cursor.fetchall()
+
+        return [
+            {
+                "category": row[0],
+                "amount": row[1],
+                "occurrence_count": row[2]
+            }
+            for row in rows
+        ]
+
+
 
 if __name__ == "__main__":
     import asyncio
