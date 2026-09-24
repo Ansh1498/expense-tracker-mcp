@@ -808,6 +808,23 @@ async def get_recurring_expenses():
         ]
 
 
+# Financial Dashboard Summary function
+async def get_financial_dashboard_summary():
+    """Get a complete financial dashboard summary."""
+
+    statistics = await get_expense_statistics()
+    top_categories = await get_top_spending_categories(limit=5)
+    trends = await get_expense_trends()
+    budgets = await get_budgets()
+
+    return {
+        "statistics": statistics,
+        "top_categories": top_categories,
+        "monthly_trends": trends,
+        "budgets": budgets
+    }
+
+
 
 if __name__ == "__main__":
     import asyncio
