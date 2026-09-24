@@ -15,6 +15,7 @@ from expense_tracker_mcp.database import (
     get_expense_statistics as db_get_expense_statistics,
     set_budget as db_set_budget,
     get_budgets as db_get_budgets,
+    get_budget_status as db_get_budget_status,
 )
 
 
@@ -194,6 +195,14 @@ async def get_budgets():
     """Get all category budgets."""
 
     return await db_get_budgets()
+
+
+@mcp.tool
+async def get_budget_status(category: str):
+    """Compare monthly budget with actual spending."""
+
+    return await db_get_budget_status(category)
+
 
 
 if __name__ == "__main__":

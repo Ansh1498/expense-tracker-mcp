@@ -530,6 +530,71 @@ async def get_budgets():
         ]
 
 
+# Budget Status function
+async def get_budget_status(category: str):
+    """Compare monthly budget with actual spending."""
+
+    from datetime import datetime
+
+    current_date = datetime.now()
+
+    year = current_date.year
+    month = current_date.month
+
+    month_str = f"{month:02d}"
+    start_date = f"{year}-{month_str}-01"
+
+    if month == 12:
+        end_date = f"{year + 1}-01-01"
+    else:
+        end_date = f"{year}-{month + 1:02d}-01"
+
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        cursor = await db.execute(
+            """
+            SELECT monthly_limit
+            FROM budgets
+            WHERE category = ?
+            """,
+            (category,)
+        )
+
+        budget = await cursor.fetchone()
+
+        if budget is None:
+            return {
+                "category": category,
+                "budget": 0,
+                "spent": 0,
+                "remaining": 0,
+                "message": "No budget set for this category."
+            }
+
+        cursor = await db.execute(
+            """
+            SELECT COALESCE(SUM(amount), 0)
+            FROM expenses
+            WHERE category = ?
+            AND date >= ?
+            AND date < ?
+            """,
+            (category, start_date, end_date)
+        )
+
+        spent = await cursor.fetchone()
+
+        budget_amount = budget[0]
+        spent_amount = spent[0]
+        remaining = budget_amount - spent_amount
+
+        return {
+            "category": category,
+            "budget": budget_amount,
+            "spent": spent_amount,
+            "remaining": remaining
+        }
+
 if __name__ == "__main__":
     import asyncio
 
