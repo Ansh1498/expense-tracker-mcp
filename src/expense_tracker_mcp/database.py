@@ -461,6 +461,75 @@ async def get_expense_statistics():
         }
 
 
+# Budget Management
+async def set_budget(
+    category: str,
+    monthly_limit: float
+):
+    """Set or update a monthly budget for a category."""
+
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS budgets (
+                category TEXT PRIMARY KEY,
+                monthly_limit REAL NOT NULL
+            )
+            """
+        )
+
+        await db.execute(
+            """
+            INSERT INTO budgets (category, monthly_limit)
+            VALUES (?, ?)
+            ON CONFLICT(category)
+            DO UPDATE SET monthly_limit = excluded.monthly_limit
+            """,
+            (category, monthly_limit)
+        )
+
+        await db.commit()
+
+        return {
+            "category": category,
+            "monthly_limit": monthly_limit
+        }
+
+# Get Budgets function
+async def get_budgets():
+    """Get all category budgets."""
+
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS budgets (
+                category TEXT PRIMARY KEY,
+                monthly_limit REAL NOT NULL
+            )
+            """
+        )
+
+        cursor = await db.execute(
+            """
+            SELECT category, monthly_limit
+            FROM budgets
+            ORDER BY category
+            """
+        )
+
+        rows = await cursor.fetchall()
+
+        return [
+            {
+                "category": row[0],
+                "monthly_limit": row[1]
+            }
+            for row in rows
+        ]
+
+
 if __name__ == "__main__":
     import asyncio
 

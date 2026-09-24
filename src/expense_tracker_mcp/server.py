@@ -13,6 +13,8 @@ from expense_tracker_mcp.database import (
     get_monthly_expense_report as db_get_monthly_expense_report,
     get_category_expense_report as db_get_category_expense_report,
     get_expense_statistics as db_get_expense_statistics,
+    set_budget as db_set_budget,
+    get_budgets as db_get_budgets,
 )
 
 
@@ -174,6 +176,24 @@ async def get_expense_statistics():
     return await db_get_expense_statistics()
 
 
+@mcp.tool
+async def set_budget(
+    category: str,
+    monthly_limit: float
+):
+    """Set or update a monthly budget for a category."""
+
+    return await db_set_budget(
+        category,
+        monthly_limit
+    )
+
+
+@mcp.tool
+async def get_budgets():
+    """Get all category budgets."""
+
+    return await db_get_budgets()
 
 
 if __name__ == "__main__":
