@@ -432,7 +432,33 @@ async def get_category_expense_report(category: str):
         }
 
 
+# Expense Statistics
+async def get_expense_statistics():
+    """Get overall expense statistics."""
 
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        cursor = await db.execute(
+            """
+            SELECT
+                COUNT(*) AS total_expenses,
+                COALESCE(SUM(amount), 0) AS total_amount,
+                COALESCE(AVG(amount), 0) AS average_expense,
+                COALESCE(MAX(amount), 0) AS highest_expense,
+                COALESCE(MIN(amount), 0) AS lowest_expense
+            FROM expenses
+            """
+        )
+
+        row = await cursor.fetchone()
+
+        return {
+            "total_expenses": row[0],
+            "total_amount": row[1],
+            "average_expense": row[2],
+            "highest_expense": row[3],
+            "lowest_expense": row[4]
+        }
 
 
 if __name__ == "__main__":
