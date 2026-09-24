@@ -21,6 +21,7 @@ from expense_tracker_mcp.database import (
     get_expense_insights as db_get_expense_insights,
     get_expense_trends as db_get_expense_trends,
     get_daily_spending_summary as db_get_daily_spending_summary,
+    get_payment_method_analysis as db_get_payment_method_analysis,
 )
 
 
@@ -243,6 +244,15 @@ async def get_daily_spending_summary():
     """Get date-wise expense summary."""
 
     return await db_get_daily_spending_summary()
+
+
+@mcp.tool
+async def get_payment_method_analysis():
+    """Get expense analysis by payment method."""
+
+    return await db_get_payment_method_analysis()
+
+
 
 
 if __name__ == "__main__":

@@ -747,6 +747,36 @@ async def get_daily_spending_summary():
         ]
 
 
+async def get_payment_method_analysis():
+    """Get expense analysis by payment method."""
+
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        cursor = await db.execute(
+            """
+            SELECT
+                payment_method,
+                COUNT(*) AS expense_count,
+                SUM(amount) AS total_amount
+            FROM expenses
+            WHERE payment_method != ''
+            GROUP BY payment_method
+            ORDER BY total_amount DESC
+            """
+        )
+
+        rows = await cursor.fetchall()
+
+        return [
+            {
+                "payment_method": row[0],
+                "expense_count": row[1],
+                "total_amount": row[2]
+            }
+            for row in rows
+        ]
+
+
 
 if __name__ == "__main__":
     import asyncio
