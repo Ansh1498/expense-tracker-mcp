@@ -32,6 +32,7 @@ mcp = FastMCP("ExpenseTracker")
 
 @mcp.tool
 async def add_expense(
+    user_id: str,
     date: str,
     amount: float,
     category: str,
@@ -42,6 +43,7 @@ async def add_expense(
     """Add a new expense."""
 
     expense_id = await db_add_expense(
+        user_id,
         date,
         amount,
         category,
@@ -57,10 +59,10 @@ async def add_expense(
     }
 
 @mcp.tool
-async def get_expense(expense_id: int):
+async def get_expense(user_id: str, expense_id: int):
     """Get a single expense by ID."""
 
-    expense = await db_get_expense(expense_id)
+    expense = await db_get_expense(user_id, expense_id)
 
     if expense is None:
         return {
@@ -72,14 +74,15 @@ async def get_expense(expense_id: int):
 
 
 @mcp.tool
-async def list_expenses():
+async def list_expenses(user_id: str):
     """Get all expenses."""
 
-    return await db_list_expenses()
+    return await db_list_expenses(user_id)
 
 
 @mcp.tool
 async def update_expense(
+    user_id: str,
     expense_id: int,
     date: str,
     amount: float,
@@ -91,6 +94,7 @@ async def update_expense(
     """Update an existing expense."""
 
     rows_updated = await db_update_expense(
+        user_id,
         expense_id,
         date,
         amount,
@@ -114,10 +118,16 @@ async def update_expense(
 
 
 @mcp.tool
-async def delete_expense(expense_id: int):
-    """Delete an expense by ID."""
+async def delete_expense(
+    user_id: str,
+    expense_id: int
+):
+    """Delete an expense by ID for a specific user."""
 
-    rows_deleted = await db_delete_expense(expense_id)
+    rows_deleted = await db_delete_expense(
+        user_id,
+        expense_id
+    )
 
     if rows_deleted == 0:
         return {
@@ -133,10 +143,17 @@ async def delete_expense(expense_id: int):
 
 
 @mcp.tool
-async def search_expenses(keyword: str):
-    """Search expenses by keyword."""
+async def search_expenses(
+    user_id: str,
+    keyword: str
+):
+    """Search expenses by keyword for a specific user."""
 
-    return await db_search_expenses(keyword)
+    return await db_search_expenses(
+        user_id,
+        keyword
+    )
+
 
 
 @mcp.tool

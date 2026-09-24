@@ -44,7 +44,7 @@ DB_PATH = os.path.join(
 
 
 async def init_db():
-    """Create the expenses table if it doesn't exist."""
+    """Create the expenses table and apply database migrations."""
 
     async with aiosqlite.connect(DB_PATH) as db:
 
@@ -62,12 +62,26 @@ async def init_db():
             )
         """)
 
+        # Check existing columns
+        cursor = await db.execute("PRAGMA table_info(expenses)")
+        columns = await cursor.fetchall()
+
+        column_names = [column[1] for column in columns]
+
+        # Add user_id for existing databases
+        if "user_id" not in column_names:
+            await db.execute("""
+                ALTER TABLE expenses
+                ADD COLUMN user_id TEXT DEFAULT 'default_user'
+            """)
+
         await db.commit()
 
     print("Database initialized successfully.")
 
 # Add Expense function
 async def add_expense(
+    user_id: str,
     date: str,
     amount: float,
     category: str,
@@ -87,6 +101,7 @@ async def add_expense(
             cursor = await db.execute(
                 """
                 INSERT INTO expenses (
+                    user_id,
                     date,
                     amount,
                     category,
@@ -96,9 +111,10 @@ async def add_expense(
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    user_id,
                     date,
                     amount,
                     category,
@@ -120,8 +136,8 @@ async def add_expense(
 
 
 # List Expenses function
-async def list_expenses():
-    """Get all expenses from the database."""
+async def list_expenses(user_id: str):
+    """Get all expenses for a specific user."""
 
     async with aiosqlite.connect(DB_PATH) as db:
 
@@ -131,8 +147,10 @@ async def list_expenses():
             """
             SELECT *
             FROM expenses
+            WHERE user_id = ?
             ORDER BY date DESC, id DESC
-            """
+            """,
+            (user_id,)
         )
 
         rows = await cursor.fetchall()
@@ -143,6 +161,7 @@ async def list_expenses():
 
 # Update Expense function
 async def update_expense(
+    user_id: str,
     expense_id: int,
     date: str,
     amount: float,
@@ -171,7 +190,7 @@ async def update_expense(
                     description = ?,
                     payment_method = ?,
                     updated_at = ?
-                WHERE id = ?
+                WHERE id = ? AND user_id = ?
                 """,
                 (
                     date,
@@ -181,7 +200,8 @@ async def update_expense(
                     description,
                     payment_method,
                     now,
-                    expense_id
+                    expense_id,
+                    user_id
                 )
             )
 
@@ -194,27 +214,27 @@ async def update_expense(
         raise RuntimeError(f"Database error while updating expense: {e}")
 
 
-
 # Delete Expense function
-async def delete_expense(expense_id: int):
-    """Delete an expense by its ID."""
+async def delete_expense(user_id: str, expense_id: int):
+    """Delete an expense by its ID for a specific user."""
 
     async with aiosqlite.connect(DB_PATH) as db:
 
         cursor = await db.execute(
             """
             DELETE FROM expenses
-            WHERE id = ?
+            WHERE id = ? AND user_id = ?
             """,
-            (expense_id,)
+            (expense_id, user_id)
         )
 
         await db.commit()
 
         return cursor.rowcount
+    
 
 # Search Expenses function
-async def search_expenses(keyword: str):
+async def search_expenses(user_id: str, keyword: str):
     """Search expenses by category, subcategory, description, or payment method."""
 
     async with aiosqlite.connect(DB_PATH) as db:
@@ -228,13 +248,17 @@ async def search_expenses(keyword: str):
             SELECT *
             FROM expenses
             WHERE
-                category LIKE ?
-                OR subcategory LIKE ?
-                OR description LIKE ?
-                OR payment_method LIKE ?
+                user_id = ?
+                AND (
+                    category LIKE ?
+                    OR subcategory LIKE ?
+                    OR description LIKE ?
+                    OR payment_method LIKE ?
+                )
             ORDER BY date DESC, id DESC
             """,
             (
+                user_id,
                 search_term,
                 search_term,
                 search_term,
@@ -245,10 +269,9 @@ async def search_expenses(keyword: str):
         rows = await cursor.fetchall()
 
         return [dict(row) for row in rows]
-    
 
 # Get Expense function
-async def get_expense(expense_id: int):
+async def get_expense(user_id: str, expense_id: int):
     """Get a single expense by its ID."""
 
     async with aiosqlite.connect(DB_PATH) as db:
@@ -259,9 +282,9 @@ async def get_expense(expense_id: int):
             """
             SELECT *
             FROM expenses
-            WHERE id = ?
+            WHERE id = ? AND user_id = ?
             """,
-            (expense_id,)
+            (expense_id, user_id)
         )
 
         row = await cursor.fetchone()
