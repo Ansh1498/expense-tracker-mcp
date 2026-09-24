@@ -687,6 +687,37 @@ async def get_expense_insights():
     }
 
 
+# Expense Trends function
+async def get_expense_trends():
+    """Get month-wise expense trends."""
+
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        cursor = await db.execute(
+            """
+            SELECT
+                strftime('%Y-%m', date) AS month,
+                COUNT(*) AS expense_count,
+                SUM(amount) AS total_amount
+            FROM expenses
+            GROUP BY strftime('%Y-%m', date)
+            ORDER BY month
+            """
+        )
+
+        rows = await cursor.fetchall()
+
+        return [
+            {
+                "month": row[0],
+                "expense_count": row[1],
+                "total_amount": row[2]
+            }
+            for row in rows
+        ]
+
+
+
 if __name__ == "__main__":
     import asyncio
 

@@ -19,6 +19,7 @@ from expense_tracker_mcp.database import (
     get_spending_alert as db_get_spending_alert,
     get_top_spending_categories as db_get_top_spending_categories,
     get_expense_insights as db_get_expense_insights,
+    get_expense_trends as db_get_expense_trends,
 )
 
 
@@ -227,6 +228,12 @@ async def get_expense_insights():
 
     return await db_get_expense_insights()
 
+
+@mcp.tool
+async def get_expense_trends():
+    """Get month-wise expense trends."""
+
+    return await db_get_expense_trends()
 
 
 if __name__ == "__main__":
