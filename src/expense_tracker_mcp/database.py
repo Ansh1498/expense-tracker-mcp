@@ -636,6 +636,37 @@ async def get_spending_alert(category: str):
     }
 
 
+# Top Spending Categories function
+async def get_top_spending_categories(limit: int = 5):
+    """Get top spending categories by total amount."""
+
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        cursor = await db.execute(
+            """
+            SELECT
+                category,
+                COUNT(*) AS expense_count,
+                SUM(amount) AS total_amount
+            FROM expenses
+            GROUP BY category
+            ORDER BY total_amount DESC
+            LIMIT ?
+            """,
+            (limit,)
+        )
+
+        rows = await cursor.fetchall()
+
+        return [
+            {
+                "category": row[0],
+                "expense_count": row[1],
+                "total_amount": row[2]
+            }
+            for row in rows
+        ]
+
 
 if __name__ == "__main__":
     import asyncio
