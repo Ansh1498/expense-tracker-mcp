@@ -16,6 +16,7 @@ from expense_tracker_mcp.database import (
     set_budget as db_set_budget,
     get_budgets as db_get_budgets,
     get_budget_status as db_get_budget_status,
+    get_spending_alert as db_get_spending_alert,
 )
 
 
@@ -203,6 +204,12 @@ async def get_budget_status(category: str):
 
     return await db_get_budget_status(category)
 
+
+@mcp.tool
+async def get_spending_alert(category: str):
+    """Check whether spending is approaching or exceeding the budget."""
+
+    return await db_get_spending_alert(category)
 
 
 if __name__ == "__main__":

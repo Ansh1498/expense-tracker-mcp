@@ -595,6 +595,48 @@ async def get_budget_status(category: str):
             "remaining": remaining
         }
 
+
+# Spending Alert function
+async def get_spending_alert(category: str):
+    """Check whether spending is approaching or exceeding the budget."""
+
+    budget_status = await get_budget_status(category)
+
+    budget = budget_status["budget"]
+    spent = budget_status["spent"]
+
+    if budget == 0:
+        return {
+            "category": category,
+            "alert": False,
+            "message": "No budget set for this category."
+        }
+
+    percentage_used = (spent / budget) * 100
+
+    if percentage_used >= 100:
+        message = "Budget exceeded."
+        alert = True
+
+    elif percentage_used >= 80:
+        message = "You have used 80% or more of your budget."
+        alert = True
+
+    else:
+        message = "Spending is within the budget."
+        alert = False
+
+    return {
+        "category": category,
+        "budget": budget,
+        "spent": spent,
+        "percentage_used": round(percentage_used, 2),
+        "alert": alert,
+        "message": message
+    }
+
+
+
 if __name__ == "__main__":
     import asyncio
 
