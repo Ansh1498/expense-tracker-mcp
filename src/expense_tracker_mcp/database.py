@@ -717,6 +717,36 @@ async def get_expense_trends():
         ]
 
 
+# Daily Spending Summary function
+async def get_daily_spending_summary():
+    """Get date-wise expense summary."""
+
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        cursor = await db.execute(
+            """
+            SELECT
+                date,
+                COUNT(*) AS expense_count,
+                SUM(amount) AS total_amount
+            FROM expenses
+            GROUP BY date
+            ORDER BY date DESC
+            """
+        )
+
+        rows = await cursor.fetchall()
+
+        return [
+            {
+                "date": row[0],
+                "expense_count": row[1],
+                "total_amount": row[2]
+            }
+            for row in rows
+        ]
+
+
 
 if __name__ == "__main__":
     import asyncio
