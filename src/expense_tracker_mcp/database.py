@@ -2,7 +2,7 @@ import os
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
-from libsql_client import create_client
+import libsql
 
 load_dotenv()
 
@@ -46,47 +46,42 @@ async def init_db():
     Initialize the Turso database and create required tables.
     """
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
-        await client.batch([
-            (
-                """
-                CREATE TABLE IF NOT EXISTS expenses (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id TEXT NOT NULL,
-                    date TEXT NOT NULL,
-                    amount REAL NOT NULL,
-                    category TEXT NOT NULL,
-                    subcategory TEXT DEFAULT '',
-                    description TEXT DEFAULT '',
-                    payment_method TEXT DEFAULT '',
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-                """,
-                ()
-            ),
-            (
-                """
-                CREATE TABLE IF NOT EXISTS budgets (
-                    user_id TEXT NOT NULL,
-                    category TEXT NOT NULL,
-                    monthly_limit REAL NOT NULL,
-                    PRIMARY KEY (user_id, category)
-                )
-                """,
-                ()
-            )
-        ])
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS expenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            amount REAL NOT NULL,
+            category TEXT NOT NULL,
+            subcategory TEXT DEFAULT '',
+            description TEXT DEFAULT '',
+            payment_method TEXT DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS budgets (
+            user_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            monthly_limit REAL NOT NULL,
+            PRIMARY KEY (user_id, category)
+        )
+        """)
+
+        conn.commit()
 
         print("Turso database initialized successfully.")
 
     finally:
-        await client.close()
+        conn.close()
 
 
 # Add Expense function
@@ -103,45 +98,45 @@ async def add_expense(
 
     validate_expense(date, amount, category)
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
         now = datetime.now().isoformat()
 
-        await client.batch([
-            (
-                """
-                INSERT INTO expenses (
-                    user_id,
-                    date,
-                    amount,
-                    category,
-                    subcategory,
-                    description,
-                    payment_method,
-                    created_at,
-                    updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    user_id,
-                    date,
-                    amount,
-                    category,
-                    subcategory,
-                    description,
-                    payment_method,
-                    now,
-                    now
-                )
+        conn.execute(
+            """
+            INSERT INTO expenses (
+                user_id,
+                date,
+                amount,
+                category,
+                subcategory,
+                description,
+                payment_method,
+                created_at,
+                updated_at
             )
-        ])
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                date,
+                amount,
+                category,
+                subcategory,
+                description,
+                payment_method,
+                now,
+                now
+            )
+        )
 
-        result = await client.execute(
+        conn.commit()
+
+        result = conn.execute(
             """
             SELECT id
             FROM expenses
@@ -162,27 +157,27 @@ async def add_expense(
             )
         )
 
-        return result.rows[0][0]
+        return result.fetchone()[0]
 
     except Exception as e:
         logging.error(f"Database error while adding expense: {e}")
         raise RuntimeError(f"Database error while adding expense: {e}")
 
     finally:
-        await client.close()
+        conn.close()
 
 
 # List Expenses function
 async def list_expenses(user_id: str):
     """Get all expenses for a specific user."""
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT *
             FROM expenses
@@ -192,11 +187,24 @@ async def list_expenses(user_id: str):
             (user_id,)
         )
 
-        columns = result.columns
+        columns = [
+            "id",
+            "user_id",
+            "date",
+            "amount",
+            "category",
+            "subcategory",
+            "description",
+            "payment_method",
+            "created_at",
+            "updated_at"
+        ]
+
+        rows = result.fetchall()
 
         return [
             dict(zip(columns, row))
-            for row in result.rows
+            for row in rows
         ]
 
     except Exception as e:
@@ -204,7 +212,7 @@ async def list_expenses(user_id: str):
         raise RuntimeError(f"Database error while listing expenses: {e}")
 
     finally:
-        await client.close()
+        conn.close()
 
 
 
@@ -223,44 +231,44 @@ async def update_expense(
 
     validate_expense(date, amount, category)
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
         now = datetime.now().isoformat()
 
-        await client.batch([
+        conn.execute(
+            """
+            UPDATE expenses
+            SET
+                date = ?,
+                amount = ?,
+                category = ?,
+                subcategory = ?,
+                description = ?,
+                payment_method = ?,
+                updated_at = ?
+            WHERE id = ? AND user_id = ?
+            """,
             (
-                """
-                UPDATE expenses
-                SET
-                    date = ?,
-                    amount = ?,
-                    category = ?,
-                    subcategory = ?,
-                    description = ?,
-                    payment_method = ?,
-                    updated_at = ?
-                WHERE id = ? AND user_id = ?
-                """,
-                (
-                    date,
-                    amount,
-                    category,
-                    subcategory,
-                    description,
-                    payment_method,
-                    now,
-                    expense_id,
-                    user_id
-                )
+                date,
+                amount,
+                category,
+                subcategory,
+                description,
+                payment_method,
+                now,
+                expense_id,
+                user_id
             )
-        ])
+        )
+
+        conn.commit()
 
         # Verify whether the expense exists for this user
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT id
             FROM expenses
@@ -269,69 +277,65 @@ async def update_expense(
             (expense_id, user_id)
         )
 
-        return 1 if result.rows else 0
+        row = result.fetchone()
+
+        return 1 if row is not None else 0
 
     except Exception as e:
         logging.error(f"Database error while updating expense: {e}")
         raise RuntimeError(f"Database error while updating expense: {e}")
 
     finally:
-        await client.close()
+        conn.close()
 
 
 # Delete Expense function
 async def delete_expense(user_id: str, expense_id: int):
-    """Delete an expense by its ID for a specific user."""
+    """Delete an expense for a specific user."""
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
-        await client.batch([
-            (
-                """
-                DELETE FROM expenses
-                WHERE id = ? AND user_id = ?
-                """,
-                (expense_id, user_id)
-            )
-        ])
-
-        # Verify whether the expense was deleted
-        result = await client.execute(
+        result = conn.execute(
             """
-            SELECT id
-            FROM expenses
-            WHERE id = ? AND user_id = ?
+            DELETE FROM expenses
+            WHERE id = ?
+              AND user_id = ?
             """,
             (expense_id, user_id)
         )
 
-        return 0 if result.rows else 1
+        conn.commit()
+
+        if result.rowcount == 0:
+            return False
+
+        return True
 
     except Exception as e:
         logging.error(f"Database error while deleting expense: {e}")
         raise RuntimeError(f"Database error while deleting expense: {e}")
 
     finally:
-        await client.close()
+        conn.close()
     
 
 # Search Expenses function
 async def search_expenses(user_id: str, keyword: str):
     """Search expenses by category, subcategory, description, or payment method."""
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
         search_term = f"%{keyword}%"
 
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT *
             FROM expenses
@@ -353,11 +357,24 @@ async def search_expenses(user_id: str, keyword: str):
             )
         )
 
-        columns = result.columns
+        columns = [
+            "id",
+            "user_id",
+            "date",
+            "amount",
+            "category",
+            "subcategory",
+            "description",
+            "payment_method",
+            "created_at",
+            "updated_at"
+        ]
+
+        rows = result.fetchall()
 
         return [
             dict(zip(columns, row))
-            for row in result.rows
+            for row in rows
         ]
 
     except Exception as e:
@@ -369,19 +386,20 @@ async def search_expenses(user_id: str, keyword: str):
         )
 
     finally:
-        await client.close()
+        conn.close()
+
 
 # Get Expense function
 async def get_expense(user_id: str, expense_id: int):
     """Retrieve a specific expense belonging to a user by expense ID."""
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT *
             FROM expenses
@@ -391,10 +409,25 @@ async def get_expense(user_id: str, expense_id: int):
             (expense_id, user_id)
         )
 
-        if not result.rows:
+        row = result.fetchone()
+
+        if row is None:
             return None
 
-        return dict(zip(result.columns, result.rows[0]))
+        columns = [
+            "id",
+            "user_id",
+            "date",
+            "amount",
+            "category",
+            "subcategory",
+            "description",
+            "payment_method",
+            "created_at",
+            "updated_at"
+        ]
+
+        return dict(zip(columns, row))
 
     except Exception as e:
         logging.error(
@@ -405,7 +438,7 @@ async def get_expense(user_id: str, expense_id: int):
         )
 
     finally:
-        await client.close()
+        conn.close()
 
 
 
@@ -413,14 +446,14 @@ async def get_expense(user_id: str, expense_id: int):
 async def get_expense_summary(user_id: str):
     """Get expense summary and category-wise totals for a specific user."""
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
         # Total expenses and total amount
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT
                 COUNT(*) AS total_expenses,
@@ -431,10 +464,10 @@ async def get_expense_summary(user_id: str):
             (user_id,)
         )
 
-        summary = result.rows[0]
+        summary = result.fetchone()
 
         # Category-wise total
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT
                 category,
@@ -454,7 +487,7 @@ async def get_expense_summary(user_id: str):
                 "expense_count": row[1],
                 "total_amount": row[2]
             }
-            for row in result.rows
+            for row in result.fetchall()
         ]
 
         return {
@@ -464,11 +497,15 @@ async def get_expense_summary(user_id: str):
         }
 
     except Exception as e:
-        logging.error(f"Database error while getting expense summary: {e}")
-        raise RuntimeError(f"Database error while getting expense summary: {e}")
+        logging.error(
+            f"Database error while getting expense summary: {e}"
+        )
+        raise RuntimeError(
+            f"Database error while getting expense summary: {e}"
+        )
 
     finally:
-        await client.close()
+        conn.close()
 
     
 
@@ -480,14 +517,14 @@ async def get_expense_summary_by_date(
 ):
     """Get expense summary for a specific date range and user."""
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
         # Total expenses and total amount
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT
                 COUNT(*) AS total_expenses,
@@ -499,10 +536,10 @@ async def get_expense_summary_by_date(
             (user_id, start_date, end_date)
         )
 
-        summary = result.rows[0]
+        summary = result.fetchone()
 
         # Category-wise summary
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT
                 category,
@@ -523,7 +560,7 @@ async def get_expense_summary_by_date(
                 "expense_count": row[1],
                 "total_amount": row[2]
             }
-            for row in result.rows
+            for row in result.fetchall()
         ]
 
         return {
@@ -543,7 +580,7 @@ async def get_expense_summary_by_date(
         )
 
     finally:
-        await client.close()
+        conn.close()
 
     
 
@@ -563,13 +600,13 @@ async def get_monthly_expense_report(
     else:
         end_date = f"{year}-{month + 1:02d}-01"
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT
                 COUNT(*) AS total_expenses,
@@ -582,9 +619,9 @@ async def get_monthly_expense_report(
             (user_id, start_date, end_date)
         )
 
-        summary = result.rows[0]
+        summary = result.fetchone()
 
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT
                 category,
@@ -606,7 +643,7 @@ async def get_monthly_expense_report(
                 "expense_count": row[1],
                 "total_amount": row[2]
             }
-            for row in result.rows
+            for row in result.fetchall()
         ]
 
         return {
@@ -626,7 +663,7 @@ async def get_monthly_expense_report(
         )
 
     finally:
-        await client.close()
+        conn.close()
     
 
 
@@ -637,13 +674,13 @@ async def get_category_expense_report(
 ):
     """Get expense report for a specific category and user."""
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT
                 COUNT(*) AS expense_count,
@@ -655,9 +692,9 @@ async def get_category_expense_report(
             (user_id, category)
         )
 
-        summary = result.rows[0]
+        summary = result.fetchone()
 
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT *
             FROM expenses
@@ -668,11 +705,24 @@ async def get_category_expense_report(
             (user_id, category)
         )
 
-        columns = result.columns
+        columns = [
+            "id",
+            "user_id",
+            "date",
+            "amount",
+            "category",
+            "subcategory",
+            "description",
+            "payment_method",
+            "created_at",
+            "updated_at"
+        ]
+
+        rows = result.fetchall()
 
         expenses = [
             dict(zip(columns, row))
-            for row in result.rows
+            for row in rows
         ]
 
         return {
@@ -691,7 +741,7 @@ async def get_category_expense_report(
         )
 
     finally:
-        await client.close()
+        conn.close()
     
 
 
@@ -699,13 +749,13 @@ async def get_category_expense_report(
 async def get_expense_statistics(user_id: str):
     """Get expense statistics for a specific user."""
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT
                 COUNT(*) AS total_expenses,
@@ -719,7 +769,7 @@ async def get_expense_statistics(user_id: str):
             (user_id,)
         )
 
-        row = result.rows[0]
+        row = result.fetchone()
 
         return {
             "total_expenses": row[0],
@@ -738,7 +788,7 @@ async def get_expense_statistics(user_id: str):
         )
 
     finally:
-        await client.close()
+        conn.close()
 
 
 # Budget Management
@@ -749,47 +799,34 @@ async def set_budget(
 ):
     """
     Create or update a monthly budget for a specific user.
-
-    Each user can maintain an independent budget for the same
-    category without affecting other users.
-
-    Args:
-        user_id: Unique identifier of the user.
-        category: Expense category for which the budget is set.
-        monthly_limit: Maximum amount allowed for the category
-                       per month.
-
-    Returns:
-        A dictionary containing the user ID, category, and
-        configured monthly budget.
     """
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
-        await client.batch([
-            (
-                """
-                INSERT INTO budgets (
-                    user_id,
-                    category,
-                    monthly_limit
-                )
-                VALUES (?, ?, ?)
-                ON CONFLICT(user_id, category)
-                DO UPDATE SET
-                    monthly_limit = excluded.monthly_limit
-                """,
-                (
-                    user_id,
-                    category,
-                    monthly_limit
-                )
+        conn.execute(
+            """
+            INSERT INTO budgets (
+                user_id,
+                category,
+                monthly_limit
             )
-        ])
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, category)
+            DO UPDATE SET
+                monthly_limit = excluded.monthly_limit
+            """,
+            (
+                user_id,
+                category,
+                monthly_limit
+            )
+        )
+
+        conn.commit()
 
         return {
             "user_id": user_id,
@@ -798,11 +835,15 @@ async def set_budget(
         }
 
     except Exception as e:
-        logging.error(f"Database error while setting budget: {e}")
-        raise RuntimeError(f"Database error while setting budget: {e}")
+        logging.error(
+            f"Database error while setting budget: {e}"
+        )
+        raise RuntimeError(
+            f"Database error while setting budget: {e}"
+        )
 
     finally:
-        await client.close()
+        conn.close()
     
 
 # Get Budgets function
@@ -819,13 +860,13 @@ async def get_budgets(user_id: str):
         category name and monthly spending limit.
     """
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT
                 category,
@@ -842,7 +883,7 @@ async def get_budgets(user_id: str):
                 "category": row[0],
                 "monthly_limit": row[1]
             }
-            for row in result.rows
+            for row in result.fetchall()
         ]
 
     except Exception as e:
@@ -850,7 +891,7 @@ async def get_budgets(user_id: str):
         raise RuntimeError(f"Database error while getting budgets: {e}")
 
     finally:
-        await client.close()
+        conn.close()
 
 
 # Budget Status function
@@ -864,16 +905,6 @@ async def get_budget_status(
 
     The calculation uses only the specified user's budget and
     expenses for the current calendar month.
-
-    Args:
-        user_id: Unique identifier of the user.
-        category: Expense category whose budget status should
-                  be checked.
-
-    Returns:
-        A dictionary containing the category budget, current
-        monthly spending, remaining budget, and a message when
-        no budget is configured.
     """
 
     from datetime import datetime
@@ -891,13 +922,13 @@ async def get_budget_status(
     else:
         end_date = f"{year}-{month + 1:02d}-01"
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT monthly_limit
             FROM budgets
@@ -907,7 +938,9 @@ async def get_budget_status(
             (user_id, category)
         )
 
-        if not result.rows:
+        row = result.fetchone()
+
+        if row is None:
             return {
                 "category": category,
                 "budget": 0,
@@ -916,9 +949,9 @@ async def get_budget_status(
                 "message": "No budget set for this category."
             }
 
-        budget_amount = result.rows[0][0]
+        budget_amount = row[0]
 
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT COALESCE(SUM(amount), 0)
             FROM expenses
@@ -930,7 +963,7 @@ async def get_budget_status(
             (user_id, category, start_date, end_date)
         )
 
-        spent_amount = result.rows[0][0]
+        spent_amount = result.fetchone()[0]
         remaining = budget_amount - spent_amount
 
         return {
@@ -941,11 +974,15 @@ async def get_budget_status(
         }
 
     except Exception as e:
-        logging.error(f"Database error while getting budget status: {e}")
-        raise RuntimeError(f"Database error while getting budget status: {e}")
+        logging.error(
+            f"Database error while getting budget status: {e}"
+        )
+        raise RuntimeError(
+            f"Database error while getting budget status: {e}"
+        )
 
     finally:
-        await client.close()
+        conn.close()
 
 
 # Spending Alert function
@@ -1019,24 +1056,15 @@ async def get_top_spending_categories(
 
     Categories are ranked by the total amount spent in each
     category, from highest to lowest.
-
-    Args:
-        user_id: Unique identifier of the user whose expenses
-                 should be analyzed.
-        limit: Maximum number of top categories to return.
-
-    Returns:
-        A list containing each category, the number of expenses,
-        and the total amount spent in that category.
     """
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT
                 category,
@@ -1057,7 +1085,7 @@ async def get_top_spending_categories(
                 "expense_count": row[1],
                 "total_amount": row[2]
             }
-            for row in result.rows
+            for row in result.fetchall()
         ]
 
     except Exception as e:
@@ -1069,7 +1097,7 @@ async def get_top_spending_categories(
         )
 
     finally:
-        await client.close()
+        conn.close()
 
 
 # Expense Insights function
@@ -1113,13 +1141,13 @@ async def get_expense_insights(user_id: str):
 async def get_expense_trends(user_id: str):
     """Get month-wise expense trends for a specific user."""
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT
                 strftime('%Y-%m', date) AS month,
@@ -1139,7 +1167,7 @@ async def get_expense_trends(user_id: str):
                 "expense_count": row[1],
                 "total_amount": row[2]
             }
-            for row in result.rows
+            for row in result.fetchall()
         ]
 
     except Exception as e:
@@ -1151,20 +1179,20 @@ async def get_expense_trends(user_id: str):
         )
 
     finally:
-        await client.close()
+        conn.close()
 
 
 # Daily Spending Summary function
 async def get_daily_spending_summary(user_id: str):
     """Get date-wise expense summary for a specific user."""
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT
                 date,
@@ -1184,7 +1212,7 @@ async def get_daily_spending_summary(user_id: str):
                 "expense_count": row[1],
                 "total_amount": row[2]
             }
-            for row in result.rows
+            for row in result.fetchall()
         ]
 
     except Exception as e:
@@ -1196,19 +1224,19 @@ async def get_daily_spending_summary(user_id: str):
         )
 
     finally:
-        await client.close()
+        conn.close()
 
 
 async def get_payment_method_analysis(user_id: str):
     """Get expense analysis by payment method for a specific user."""
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT
                 payment_method,
@@ -1229,7 +1257,7 @@ async def get_payment_method_analysis(user_id: str):
                 "expense_count": row[1],
                 "total_amount": row[2]
             }
-            for row in result.rows
+            for row in result.fetchall()
         ]
 
     except Exception as e:
@@ -1241,20 +1269,20 @@ async def get_payment_method_analysis(user_id: str):
         )
 
     finally:
-        await client.close()
+        conn.close()
     
 
 # Recurring Expenses function
 async def get_recurring_expenses(user_id: str):
     """Detect recurring expenses for a specific user."""
 
-    client = create_client(
-        os.getenv("TURSO_DATABASE_URL"),
+    conn = libsql.connect(
+        database=os.getenv("TURSO_DATABASE_URL"),
         auth_token=os.getenv("TURSO_AUTH_TOKEN")
     )
 
     try:
-        result = await client.execute(
+        result = conn.execute(
             """
             SELECT
                 category,
@@ -1275,7 +1303,7 @@ async def get_recurring_expenses(user_id: str):
                 "amount": row[1],
                 "occurrence_count": row[2]
             }
-            for row in result.rows
+            for row in result.fetchall()
         ]
 
     except Exception as e:
@@ -1287,7 +1315,7 @@ async def get_recurring_expenses(user_id: str):
         )
 
     finally:
-        await client.close()
+        conn.close()
 
 
 # Financial Dashboard Summary function
