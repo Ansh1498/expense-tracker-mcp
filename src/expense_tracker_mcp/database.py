@@ -1,7 +1,10 @@
-import aiosqlite
 import os
 import logging
 from datetime import datetime
+from dotenv import load_dotenv
+from libsql_client import create_client
+
+load_dotenv()
 
 
 def validate_expense(
@@ -36,119 +39,54 @@ logging.basicConfig(
 
 
 
-# SQLite database file
-DB_PATH = os.path.join(
-    os.path.dirname(__file__),
-    "expenses.db"
-)
 
 
 async def init_db():
     """
-    Initialize the database and apply required schema migrations.
-
-    This function creates the expenses and budgets tables if they
-    do not exist and safely adds user isolation support to existing
-    databases.
+    Initialize the Turso database and create required tables.
     """
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
-        # Create expenses table
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS expenses (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date TEXT NOT NULL,
-                amount REAL NOT NULL,
-                category TEXT NOT NULL,
-                subcategory TEXT DEFAULT '',
-                description TEXT DEFAULT '',
-                payment_method TEXT DEFAULT '',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-        """)
-
-        # Check existing expense columns
-        cursor = await db.execute("PRAGMA table_info(expenses)")
-        columns = await cursor.fetchall()
-
-        column_names = [column[1] for column in columns]
-
-        # Add user_id to existing expenses table
-        if "user_id" not in column_names:
-            await db.execute("""
-                ALTER TABLE expenses
-                ADD COLUMN user_id TEXT DEFAULT 'default_user'
-            """)
-
-        # Check whether budgets table exists
-        cursor = await db.execute(
-            """
-            SELECT name
-            FROM sqlite_master
-            WHERE type = 'table'
-              AND name = 'budgets'
-            """
-        )
-
-        budgets_exists = await cursor.fetchone()
-
-        if not budgets_exists:
-
-            # Create new user-specific budgets table
-            await db.execute("""
-                CREATE TABLE budgets (
+    try:
+        await client.batch([
+            (
+                """
+                CREATE TABLE IF NOT EXISTS expenses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    category TEXT NOT NULL,
+                    subcategory TEXT DEFAULT '',
+                    description TEXT DEFAULT '',
+                    payment_method TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """,
+                ()
+            ),
+            (
+                """
+                CREATE TABLE IF NOT EXISTS budgets (
                     user_id TEXT NOT NULL,
                     category TEXT NOT NULL,
                     monthly_limit REAL NOT NULL,
                     PRIMARY KEY (user_id, category)
                 )
-            """)
+                """,
+                ()
+            )
+        ])
 
-        else:
+        print("Turso database initialized successfully.")
 
-            # Check existing budgets table columns
-            cursor = await db.execute("PRAGMA table_info(budgets)")
-            budget_columns = await cursor.fetchall()
-
-            budget_column_names = [column[1] for column in budget_columns]
-
-            # Migrate old budgets table
-            if "user_id" not in budget_column_names:
-
-                await db.execute("""
-                    CREATE TABLE budgets_new (
-                        user_id TEXT NOT NULL,
-                        category TEXT NOT NULL,
-                        monthly_limit REAL NOT NULL,
-                        PRIMARY KEY (user_id, category)
-                    )
-                """)
-
-                await db.execute("""
-                    INSERT INTO budgets_new (
-                        user_id,
-                        category,
-                        monthly_limit
-                    )
-                    SELECT
-                        'default_user',
-                        category,
-                        monthly_limit
-                    FROM budgets
-                """)
-
-                await db.execute("DROP TABLE budgets")
-
-                await db.execute("""
-                    ALTER TABLE budgets_new
-                    RENAME TO budgets
-                """)
-
-        await db.commit()
-
-    print("Database initialized successfully.")
+    finally:
+        await client.close()
 
 
 # Add Expense function
@@ -161,16 +99,20 @@ async def add_expense(
     description: str = "",
     payment_method: str = ""
 ):
-    """Add a new expense to the database."""
+    """Add a new expense for a specific user."""
 
     validate_expense(date, amount, category)
+
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
     try:
         now = datetime.now().isoformat()
 
-        async with aiosqlite.connect(DB_PATH) as db:
-
-            cursor = await db.execute(
+        await client.batch([
+            (
                 """
                 INSERT INTO expenses (
                     user_id,
@@ -197,25 +139,50 @@ async def add_expense(
                     now
                 )
             )
+        ])
 
-            await db.commit()
+        result = await client.execute(
+            """
+            SELECT id
+            FROM expenses
+            WHERE user_id = ?
+              AND date = ?
+              AND amount = ?
+              AND category = ?
+              AND created_at = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (
+                user_id,
+                date,
+                amount,
+                category,
+                now
+            )
+        )
 
-            return cursor.lastrowid
+        return result.rows[0][0]
 
-    except aiosqlite.Error as e:
+    except Exception as e:
         logging.error(f"Database error while adding expense: {e}")
         raise RuntimeError(f"Database error while adding expense: {e}")
+
+    finally:
+        await client.close()
 
 
 # List Expenses function
 async def list_expenses(user_id: str):
     """Get all expenses for a specific user."""
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
-        db.row_factory = aiosqlite.Row
-
-        cursor = await db.execute(
+    try:
+        result = await client.execute(
             """
             SELECT *
             FROM expenses
@@ -225,9 +192,19 @@ async def list_expenses(user_id: str):
             (user_id,)
         )
 
-        rows = await cursor.fetchall()
+        columns = result.columns
 
-        return [dict(row) for row in rows]
+        return [
+            dict(zip(columns, row))
+            for row in result.rows
+        ]
+
+    except Exception as e:
+        logging.error(f"Database error while listing expenses: {e}")
+        raise RuntimeError(f"Database error while listing expenses: {e}")
+
+    finally:
+        await client.close()
 
 
 
@@ -242,16 +219,20 @@ async def update_expense(
     description: str = "",
     payment_method: str = ""
 ):
-    """Update an existing expense."""
+    """Update an existing expense for a specific user."""
 
     validate_expense(date, amount, category)
+
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
     try:
         now = datetime.now().isoformat()
 
-        async with aiosqlite.connect(DB_PATH) as db:
-
-            cursor = await db.execute(
+        await client.batch([
+            (
                 """
                 UPDATE expenses
                 SET
@@ -276,57 +257,91 @@ async def update_expense(
                     user_id
                 )
             )
+        ])
 
-            await db.commit()
+        # Verify whether the expense exists for this user
+        result = await client.execute(
+            """
+            SELECT id
+            FROM expenses
+            WHERE id = ? AND user_id = ?
+            """,
+            (expense_id, user_id)
+        )
 
-            return cursor.rowcount
+        return 1 if result.rows else 0
 
-    except aiosqlite.Error as e:
+    except Exception as e:
         logging.error(f"Database error while updating expense: {e}")
         raise RuntimeError(f"Database error while updating expense: {e}")
+
+    finally:
+        await client.close()
 
 
 # Delete Expense function
 async def delete_expense(user_id: str, expense_id: int):
     """Delete an expense by its ID for a specific user."""
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
-        cursor = await db.execute(
+    try:
+        await client.batch([
+            (
+                """
+                DELETE FROM expenses
+                WHERE id = ? AND user_id = ?
+                """,
+                (expense_id, user_id)
+            )
+        ])
+
+        # Verify whether the expense was deleted
+        result = await client.execute(
             """
-            DELETE FROM expenses
+            SELECT id
+            FROM expenses
             WHERE id = ? AND user_id = ?
             """,
             (expense_id, user_id)
         )
 
-        await db.commit()
+        return 0 if result.rows else 1
 
-        return cursor.rowcount
+    except Exception as e:
+        logging.error(f"Database error while deleting expense: {e}")
+        raise RuntimeError(f"Database error while deleting expense: {e}")
+
+    finally:
+        await client.close()
     
 
 # Search Expenses function
 async def search_expenses(user_id: str, keyword: str):
     """Search expenses by category, subcategory, description, or payment method."""
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
-        db.row_factory = aiosqlite.Row
-
+    try:
         search_term = f"%{keyword}%"
 
-        cursor = await db.execute(
+        result = await client.execute(
             """
             SELECT *
             FROM expenses
-            WHERE
-                user_id = ?
-                AND (
-                    category LIKE ?
-                    OR subcategory LIKE ?
-                    OR description LIKE ?
-                    OR payment_method LIKE ?
-                )
+            WHERE user_id = ?
+              AND (
+                  category LIKE ?
+                  OR subcategory LIKE ?
+                  OR description LIKE ?
+                  OR payment_method LIKE ?
+              )
             ORDER BY date DESC, id DESC
             """,
             (
@@ -338,33 +353,59 @@ async def search_expenses(user_id: str, keyword: str):
             )
         )
 
-        rows = await cursor.fetchall()
+        columns = result.columns
 
-        return [dict(row) for row in rows]
+        return [
+            dict(zip(columns, row))
+            for row in result.rows
+        ]
+
+    except Exception as e:
+        logging.error(
+            f"Database error while searching expenses: {e}"
+        )
+        raise RuntimeError(
+            f"Database error while searching expenses: {e}"
+        )
+
+    finally:
+        await client.close()
 
 # Get Expense function
 async def get_expense(user_id: str, expense_id: int):
-    """Get a single expense by its ID."""
+    """Retrieve a specific expense belonging to a user by expense ID."""
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
-        db.row_factory = aiosqlite.Row
-
-        cursor = await db.execute(
+    try:
+        result = await client.execute(
             """
             SELECT *
             FROM expenses
-            WHERE id = ? AND user_id = ?
+            WHERE id = ?
+              AND user_id = ?
             """,
             (expense_id, user_id)
         )
 
-        row = await cursor.fetchone()
-
-        if row is None:
+        if not result.rows:
             return None
 
-        return dict(row)
+        return dict(zip(result.columns, result.rows[0]))
+
+    except Exception as e:
+        logging.error(
+            f"Database error while retrieving expense: {e}"
+        )
+        raise RuntimeError(
+            f"Database error while retrieving expense: {e}"
+        )
+
+    finally:
+        await client.close()
 
 
 
@@ -372,10 +413,14 @@ async def get_expense(user_id: str, expense_id: int):
 async def get_expense_summary(user_id: str):
     """Get expense summary and category-wise totals for a specific user."""
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
+    try:
         # Total expenses and total amount
-        cursor = await db.execute(
+        result = await client.execute(
             """
             SELECT
                 COUNT(*) AS total_expenses,
@@ -386,10 +431,10 @@ async def get_expense_summary(user_id: str):
             (user_id,)
         )
 
-        summary = await cursor.fetchone()
+        summary = result.rows[0]
 
         # Category-wise total
-        cursor = await db.execute(
+        result = await client.execute(
             """
             SELECT
                 category,
@@ -403,15 +448,13 @@ async def get_expense_summary(user_id: str):
             (user_id,)
         )
 
-        rows = await cursor.fetchall()
-
         category_summary = [
             {
                 "category": row[0],
                 "expense_count": row[1],
                 "total_amount": row[2]
             }
-            for row in rows
+            for row in result.rows
         ]
 
         return {
@@ -419,6 +462,13 @@ async def get_expense_summary(user_id: str):
             "total_amount": summary[1],
             "category_summary": category_summary
         }
+
+    except Exception as e:
+        logging.error(f"Database error while getting expense summary: {e}")
+        raise RuntimeError(f"Database error while getting expense summary: {e}")
+
+    finally:
+        await client.close()
 
     
 
@@ -430,10 +480,14 @@ async def get_expense_summary_by_date(
 ):
     """Get expense summary for a specific date range and user."""
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
+    try:
         # Total expenses and total amount
-        cursor = await db.execute(
+        result = await client.execute(
             """
             SELECT
                 COUNT(*) AS total_expenses,
@@ -445,10 +499,10 @@ async def get_expense_summary_by_date(
             (user_id, start_date, end_date)
         )
 
-        summary = await cursor.fetchone()
+        summary = result.rows[0]
 
         # Category-wise summary
-        cursor = await db.execute(
+        result = await client.execute(
             """
             SELECT
                 category,
@@ -463,15 +517,13 @@ async def get_expense_summary_by_date(
             (user_id, start_date, end_date)
         )
 
-        rows = await cursor.fetchall()
-
         category_summary = [
             {
                 "category": row[0],
                 "expense_count": row[1],
                 "total_amount": row[2]
             }
-            for row in rows
+            for row in result.rows
         ]
 
         return {
@@ -481,6 +533,17 @@ async def get_expense_summary_by_date(
             "total_amount": summary[1],
             "category_summary": category_summary
         }
+
+    except Exception as e:
+        logging.error(
+            f"Database error while getting date range summary: {e}"
+        )
+        raise RuntimeError(
+            f"Database error while getting date range summary: {e}"
+        )
+
+    finally:
+        await client.close()
 
     
 
@@ -500,9 +563,13 @@ async def get_monthly_expense_report(
     else:
         end_date = f"{year}-{month + 1:02d}-01"
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
-        cursor = await db.execute(
+    try:
+        result = await client.execute(
             """
             SELECT
                 COUNT(*) AS total_expenses,
@@ -515,9 +582,9 @@ async def get_monthly_expense_report(
             (user_id, start_date, end_date)
         )
 
-        summary = await cursor.fetchone()
+        summary = result.rows[0]
 
-        cursor = await db.execute(
+        result = await client.execute(
             """
             SELECT
                 category,
@@ -533,15 +600,13 @@ async def get_monthly_expense_report(
             (user_id, start_date, end_date)
         )
 
-        rows = await cursor.fetchall()
-
         category_summary = [
             {
                 "category": row[0],
                 "expense_count": row[1],
                 "total_amount": row[2]
             }
-            for row in rows
+            for row in result.rows
         ]
 
         return {
@@ -551,6 +616,17 @@ async def get_monthly_expense_report(
             "total_amount": summary[1],
             "category_summary": category_summary
         }
+
+    except Exception as e:
+        logging.error(
+            f"Database error while getting monthly expense report: {e}"
+        )
+        raise RuntimeError(
+            f"Database error while getting monthly expense report: {e}"
+        )
+
+    finally:
+        await client.close()
     
 
 
@@ -561,11 +637,13 @@ async def get_category_expense_report(
 ):
     """Get expense report for a specific category and user."""
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
-        db.row_factory = aiosqlite.Row
-
-        cursor = await db.execute(
+    try:
+        result = await client.execute(
             """
             SELECT
                 COUNT(*) AS expense_count,
@@ -577,9 +655,9 @@ async def get_category_expense_report(
             (user_id, category)
         )
 
-        summary = await cursor.fetchone()
+        summary = result.rows[0]
 
-        cursor = await db.execute(
+        result = await client.execute(
             """
             SELECT *
             FROM expenses
@@ -590,14 +668,30 @@ async def get_category_expense_report(
             (user_id, category)
         )
 
-        rows = await cursor.fetchall()
+        columns = result.columns
+
+        expenses = [
+            dict(zip(columns, row))
+            for row in result.rows
+        ]
 
         return {
             "category": category,
-            "expense_count": summary["expense_count"],
-            "total_amount": summary["total_amount"],
-            "expenses": [dict(row) for row in rows]
+            "expense_count": summary[0],
+            "total_amount": summary[1],
+            "expenses": expenses
         }
+
+    except Exception as e:
+        logging.error(
+            f"Database error while getting category expense report: {e}"
+        )
+        raise RuntimeError(
+            f"Database error while getting category expense report: {e}"
+        )
+
+    finally:
+        await client.close()
     
 
 
@@ -605,9 +699,13 @@ async def get_category_expense_report(
 async def get_expense_statistics(user_id: str):
     """Get expense statistics for a specific user."""
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
-        cursor = await db.execute(
+    try:
+        result = await client.execute(
             """
             SELECT
                 COUNT(*) AS total_expenses,
@@ -621,7 +719,7 @@ async def get_expense_statistics(user_id: str):
             (user_id,)
         )
 
-        row = await cursor.fetchone()
+        row = result.rows[0]
 
         return {
             "total_expenses": row[0],
@@ -630,6 +728,17 @@ async def get_expense_statistics(user_id: str):
             "highest_expense": row[3],
             "lowest_expense": row[4]
         }
+
+    except Exception as e:
+        logging.error(
+            f"Database error while getting expense statistics: {e}"
+        )
+        raise RuntimeError(
+            f"Database error while getting expense statistics: {e}"
+        )
+
+    finally:
+        await client.close()
 
 
 # Budget Management
@@ -655,34 +764,45 @@ async def set_budget(
         configured monthly budget.
     """
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
-        await db.execute(
-            """
-            INSERT INTO budgets (
-                user_id,
-                category,
-                monthly_limit
-            )
-            VALUES (?, ?, ?)
-            ON CONFLICT(user_id, category)
-            DO UPDATE SET
-                monthly_limit = excluded.monthly_limit
-            """,
+    try:
+        await client.batch([
             (
-                user_id,
-                category,
-                monthly_limit
+                """
+                INSERT INTO budgets (
+                    user_id,
+                    category,
+                    monthly_limit
+                )
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id, category)
+                DO UPDATE SET
+                    monthly_limit = excluded.monthly_limit
+                """,
+                (
+                    user_id,
+                    category,
+                    monthly_limit
+                )
             )
-        )
-
-        await db.commit()
+        ])
 
         return {
             "user_id": user_id,
             "category": category,
             "monthly_limit": monthly_limit
         }
+
+    except Exception as e:
+        logging.error(f"Database error while setting budget: {e}")
+        raise RuntimeError(f"Database error while setting budget: {e}")
+
+    finally:
+        await client.close()
     
 
 # Get Budgets function
@@ -699,9 +819,13 @@ async def get_budgets(user_id: str):
         category name and monthly spending limit.
     """
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
-        cursor = await db.execute(
+    try:
+        result = await client.execute(
             """
             SELECT
                 category,
@@ -713,15 +837,20 @@ async def get_budgets(user_id: str):
             (user_id,)
         )
 
-        rows = await cursor.fetchall()
-
         return [
             {
                 "category": row[0],
                 "monthly_limit": row[1]
             }
-            for row in rows
+            for row in result.rows
         ]
+
+    except Exception as e:
+        logging.error(f"Database error while getting budgets: {e}")
+        raise RuntimeError(f"Database error while getting budgets: {e}")
+
+    finally:
+        await client.close()
 
 
 # Budget Status function
@@ -762,9 +891,13 @@ async def get_budget_status(
     else:
         end_date = f"{year}-{month + 1:02d}-01"
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
-        cursor = await db.execute(
+    try:
+        result = await client.execute(
             """
             SELECT monthly_limit
             FROM budgets
@@ -774,9 +907,7 @@ async def get_budget_status(
             (user_id, category)
         )
 
-        budget = await cursor.fetchone()
-
-        if budget is None:
+        if not result.rows:
             return {
                 "category": category,
                 "budget": 0,
@@ -785,7 +916,9 @@ async def get_budget_status(
                 "message": "No budget set for this category."
             }
 
-        cursor = await db.execute(
+        budget_amount = result.rows[0][0]
+
+        result = await client.execute(
             """
             SELECT COALESCE(SUM(amount), 0)
             FROM expenses
@@ -797,10 +930,7 @@ async def get_budget_status(
             (user_id, category, start_date, end_date)
         )
 
-        spent = await cursor.fetchone()
-
-        budget_amount = budget[0]
-        spent_amount = spent[0]
+        spent_amount = result.rows[0][0]
         remaining = budget_amount - spent_amount
 
         return {
@@ -809,6 +939,13 @@ async def get_budget_status(
             "spent": spent_amount,
             "remaining": remaining
         }
+
+    except Exception as e:
+        logging.error(f"Database error while getting budget status: {e}")
+        raise RuntimeError(f"Database error while getting budget status: {e}")
+
+    finally:
+        await client.close()
 
 
 # Spending Alert function
@@ -893,9 +1030,13 @@ async def get_top_spending_categories(
         and the total amount spent in that category.
     """
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
-        cursor = await db.execute(
+    try:
+        result = await client.execute(
             """
             SELECT
                 category,
@@ -910,16 +1051,25 @@ async def get_top_spending_categories(
             (user_id, limit)
         )
 
-        rows = await cursor.fetchall()
-
         return [
             {
                 "category": row[0],
                 "expense_count": row[1],
                 "total_amount": row[2]
             }
-            for row in rows
+            for row in result.rows
         ]
+
+    except Exception as e:
+        logging.error(
+            f"Database error while getting top spending categories: {e}"
+        )
+        raise RuntimeError(
+            f"Database error while getting top spending categories: {e}"
+        )
+
+    finally:
+        await client.close()
 
 
 # Expense Insights function
@@ -963,9 +1113,13 @@ async def get_expense_insights(user_id: str):
 async def get_expense_trends(user_id: str):
     """Get month-wise expense trends for a specific user."""
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
-        cursor = await db.execute(
+    try:
+        result = await client.execute(
             """
             SELECT
                 strftime('%Y-%m', date) AS month,
@@ -979,25 +1133,38 @@ async def get_expense_trends(user_id: str):
             (user_id,)
         )
 
-        rows = await cursor.fetchall()
-
         return [
             {
                 "month": row[0],
                 "expense_count": row[1],
                 "total_amount": row[2]
             }
-            for row in rows
+            for row in result.rows
         ]
+
+    except Exception as e:
+        logging.error(
+            f"Database error while getting expense trends: {e}"
+        )
+        raise RuntimeError(
+            f"Database error while getting expense trends: {e}"
+        )
+
+    finally:
+        await client.close()
 
 
 # Daily Spending Summary function
 async def get_daily_spending_summary(user_id: str):
     """Get date-wise expense summary for a specific user."""
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
-        cursor = await db.execute(
+    try:
+        result = await client.execute(
             """
             SELECT
                 date,
@@ -1011,24 +1178,37 @@ async def get_daily_spending_summary(user_id: str):
             (user_id,)
         )
 
-        rows = await cursor.fetchall()
-
         return [
             {
                 "date": row[0],
                 "expense_count": row[1],
                 "total_amount": row[2]
             }
-            for row in rows
+            for row in result.rows
         ]
+
+    except Exception as e:
+        logging.error(
+            f"Database error while getting daily spending summary: {e}"
+        )
+        raise RuntimeError(
+            f"Database error while getting daily spending summary: {e}"
+        )
+
+    finally:
+        await client.close()
 
 
 async def get_payment_method_analysis(user_id: str):
     """Get expense analysis by payment method for a specific user."""
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
-        cursor = await db.execute(
+    try:
+        result = await client.execute(
             """
             SELECT
                 payment_method,
@@ -1043,25 +1223,38 @@ async def get_payment_method_analysis(user_id: str):
             (user_id,)
         )
 
-        rows = await cursor.fetchall()
-
         return [
             {
                 "payment_method": row[0],
                 "expense_count": row[1],
                 "total_amount": row[2]
             }
-            for row in rows
+            for row in result.rows
         ]
+
+    except Exception as e:
+        logging.error(
+            f"Database error while getting payment method analysis: {e}"
+        )
+        raise RuntimeError(
+            f"Database error while getting payment method analysis: {e}"
+        )
+
+    finally:
+        await client.close()
     
 
 # Recurring Expenses function
 async def get_recurring_expenses(user_id: str):
     """Detect recurring expenses for a specific user."""
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    client = create_client(
+        os.getenv("TURSO_DATABASE_URL"),
+        auth_token=os.getenv("TURSO_AUTH_TOKEN")
+    )
 
-        cursor = await db.execute(
+    try:
+        result = await client.execute(
             """
             SELECT
                 category,
@@ -1076,16 +1269,25 @@ async def get_recurring_expenses(user_id: str):
             (user_id,)
         )
 
-        rows = await cursor.fetchall()
-
         return [
             {
                 "category": row[0],
                 "amount": row[1],
                 "occurrence_count": row[2]
             }
-            for row in rows
+            for row in result.rows
         ]
+
+    except Exception as e:
+        logging.error(
+            f"Database error while detecting recurring expenses: {e}"
+        )
+        raise RuntimeError(
+            f"Database error while detecting recurring expenses: {e}"
+        )
+
+    finally:
+        await client.close()
 
 
 # Financial Dashboard Summary function

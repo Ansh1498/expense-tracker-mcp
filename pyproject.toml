@@ -8,8 +8,8 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
-    "aiosqlite>=0.22.1",
     "fastmcp>=4.0.7",
+    "libsql-client>=0.3.1",
 ]
 
 [project.scripts]

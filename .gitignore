@@ -17,5 +17,8 @@ __pycache__/
 # Pytest cache
 .pytest_cache/
 
-# Local testing script
+
+# Local testing scripts
 test_monthly.py
+test_libsql.py
+test_turso.py
