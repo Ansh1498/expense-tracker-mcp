@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
+    "certifi>=2026.7.22",
     "fastmcp>=4.0.7",
     "libsql>=0.1.11",
 ]
